@@ -1,10 +1,6 @@
 from rest_framework import serializers
 from django.db.models import ImageField, FileField
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from .models import CustomUser, Role, Profile
-
-User = get_user_model()
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -58,33 +54,24 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = Profile
         fields = '__all__'
 
-class RegisterSerializer(serializers.ModelSerializer):
-    # Role selection must match a Group name
-    role = serializers.ChoiceField(
-        choices=[
-            ('patient', 'Patient'),
-            ('doctor', 'Doctor'),
-            ('caretaker', 'Caretaker')
-        ]
-    )
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    name     = serializers.CharField(max_length=150)
+    email    = serializers.EmailField()
     password = serializers.CharField(write_only=True, min_length=8)
+    userType = serializers.CharField()  # just a free-text field for now
 
-    class Meta:
-        model = User
-        fields = ['username', 'password', 'first_name', 'last_name', 'email', 'role']
+    def validate_username(self, value):
+        if CustomUser.objects.filter(username=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        return value
 
-    def create(self, validated_data):
-        # Pop off role and password
-        role_name = validated_data.pop('role')
-        password = validated_data.pop('password')
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already registered.")
+        return value
 
-        # Create the User instance
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-
-        # Assign the initial role via Group
-        group = Group.objects.get(name=role_name)
-        user.roles.add(group)
-
-        return user
+    def validate_userType(self, value):
+        if not Role.objects.filter(name=value).exists():
+            raise serializers.ValidationError(f"Invalid role: {value}")
+        return value

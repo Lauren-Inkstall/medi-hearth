@@ -3,13 +3,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
-from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import CustomUser, Profile, Role
 from .serializers import ProfileSerializer, RegisterSerializer, UserSerializer
-
-User = get_user_model()
 
 class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
@@ -64,44 +61,36 @@ class UserDetailView(APIView):
 
 # CUSTOM REGISTER VIEW
 class RegisterView(APIView):
-    def post(self, request, *args, **kwargs):
-        # Deserialize input
+    permission_classes = [AllowAny]
+
+    def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         username = serializer.validated_data['username']
-        role = serializer.validated_data['role']
+        name     = serializer.validated_data['name']
+        email    = serializer.validated_data['email']
+        password = serializer.validated_data['password']
+        role_name= serializer.validated_data['userType']
+        role_obj = Role.objects.get(name=role_name)
 
-        # Look up existing users by username
-        existing_users = User.objects.filter(username=username)
-        if existing_users.exists():
-            user = existing_users.first()
-            # If they already have this role, reject
-            if user.roles.filter(name=role).exists():
-                return Response(
-                    {'error': 'Username taken for this role.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            # If username exists but role differs, ensure personal details match
-            for field in ['first_name', 'last_name', 'email']:
-                existing_value = getattr(user, field)
-                provided_value = serializer.validated_data.get(field)
-                if provided_value is None or existing_value != provided_value:
-                    return Response(
-                        {'error': f"Provided {field} does not match existing user."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            # Append new role to existing user
-            group = user.roles.model.objects.get(name=role)
-            user.roles.add(group)
+        # At this point, username & email are guaranteed unique by the serializer
+        try:
+            user = CustomUser(
+                username=username,
+                email=email,
+                first_name=name  # or store in profile if you prefer
+            )
+            user.set_password(password)
+            user.save()
+        except IntegrityError:
             return Response(
-                {'message': 'New role added successfully.'},
-                status=status.HTTP_200_OK
+                {"detail": "Username or email conflict, please choose another."},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        # No existing user: create a new one
-        new_user = serializer.save()
-        return Response(
-            {'message': 'User registered successfully.'},
-            status=status.HTTP_201_CREATED
-        )
+        # create profile & assign role
+        Profile.objects.create(user=user)
+        user.roles.add(role_obj)
+
+        return Response({"detail": "Registered successfully."}, status=status.HTTP_201_CREATED)

@@ -1,4 +1,4 @@
-from django.contrib.auth.models import AbstractUser, Group
+from django.contrib.auth.models import AbstractUser
 from django.db import models
 
 # Define choices for gender and blood types for use in Profile
@@ -47,11 +47,3 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Profile of {self.user.username}"
-    
-class User(AbstractUser):
-    roles = models.ManyToManyField(
-        Group,
-        related_name='users',
-        blank=True,
-        help_text='Roles assigned to the user'
-    )
